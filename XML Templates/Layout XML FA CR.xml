@@ -1,0 +1,324 @@
+<#setting locale="en_US">
+<#setting number_format="#.##">
+<#assign valor = 0>
+<#assign cont = 1>
+<#assign aDateTime = .now>
+<#assign aDate = aDateTime?date>
+<#assign aTime = aDateTime?time>
+<#assign currency = transaction.currency.symbol>
+<#assign tranfree = '${transaction.custbody_es_ttg}'>
+<#assign enforeing = '${customer.custentity_nch_entity_foreing}'>
+<#assign exoneracion = '${transaction.custbody_nch_fac_exonera}'>
+<#if enforeing != 'Sí'><#assign trantype = "01"><#else><#assign trantype = "09"></#if>
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<Comprobantes>
+	<Comprobante>
+		<informacionOrganismo>
+			<#if enforeing != 'Sí'>
+			<FacturaElectronica xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/facturaElectronica">
+			<#else>
+			<FacturaElectronicaExportacion xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/facturaElectronicaExportacion" >
+			</#if>
+				<Clave></Clave>
+				<CodigoActividad>505002</CodigoActividad>
+				<NumeroConsecutivo>00100001${trantype}-NUMERACION-${transaction.tranid}-NUMERACION-</NumeroConsecutivo>
+				<FechaEmision>${aDateTime?iso_local_nz}</FechaEmision>
+				<Emisor>
+					<Nombre>${transaction.subsidiary.legalname}</Nombre>
+					<Identificacion>
+						<Tipo>02</Tipo>
+						<Numero>${transaction.subsidiary.taxidnum}</Numero>
+					</Identificacion>
+					<NombreComercial>${transaction.subsidiary.legalname}</NombreComercial>
+					<Ubicacion>
+						<Provincia>1</Provincia>
+						<Canton>01</Canton>
+						<Distrito>05</Distrito>
+						<Barrio>18</Barrio>
+						<OtrasSenas>100 Metros al este y 25 al norte de la aduana postal Zapote San Jose Costa Rica </OtrasSenas>
+					</Ubicacion>
+					<Telefono>
+						<CodigoPais>506</CodigoPais>
+						<NumTelefono>22812181</NumTelefono>
+					</Telefono>
+					<CorreoElectronico>${transaction.subsidiary.email}</CorreoElectronico>
+				</Emisor>
+				<Receptor>
+					<Nombre>${customer.companyname}</Nombre>
+					<#if enforeing == 'Sí'>
+					<IdentificacionExtranjero>${customer.vatregnumber}</IdentificacionExtranjero>
+					<#else>
+					<Identificacion>
+						<Tipo>${customer.custentity_nch_codedoc_identity}</Tipo>
+						<Numero>${customer.vatregnumber}</Numero>
+					</Identificacion>
+					</#if>
+					<NombreComercial>${customer.companyname}</NombreComercial>
+					<!-- ASIGNACION DE CODIGO EN DIRECCION FISCAL -->
+					<#if enforeing != 'Sí'>
+					<#assign billzip = '${transaction.billzip}'>
+					<Ubicacion>
+						<Provincia><#if billzip?length <= 7>${billzip?substring(0,1)}</#if></Provincia>
+						<Canton><#if billzip?length <= 7>${billzip?substring(1,3)}</#if></Canton>
+						<Distrito><#if billzip?length <= 7>${billzip?substring(3,5)}</#if></Distrito>
+						<Barrio><#if billzip?length <= 7>${billzip?substring(5,7)}</#if></Barrio>
+						<OtrasSenas>${transaction.billaddr1} ${transaction.billaddr2} ${transaction.billaddr3} ${transaction.billcity} ${transaction.billstate}</OtrasSenas>
+					</Ubicacion>
+					<Telefono>
+						<CodigoPais>506</CodigoPais>
+						<NumTelefono>${customer.phone}</NumTelefono>
+					</Telefono>
+					<#else>
+					<OtrasSenasExtranjero>${transaction.billaddr1} ${transaction.billaddr2} ${transaction.billaddr3} ${transaction.billcity} ${transaction.billstate}</OtrasSenasExtranjero>
+					</#if>
+					<CorreoElectronico>${customer.email}</CorreoElectronico>
+				</Receptor>
+				<#if transaction.terms == 'CONTADO'>
+				<CondicionVenta>01</CondicionVenta>
+				<#else>
+				<CondicionVenta>02</CondicionVenta>
+				<PlazoCredito>${transaction.custbody26} dias</PlazoCredito>
+				</#if>
+				<MedioPago>${transaction.custbody_nch_code_medipago}</MedioPago>
+				<DetalleServicio>
+				<#assign TarifaItem = ''>
+				<#assign TasaIVA = 0>
+				<#assign imporsigv = 0>
+	            <#assign taxtotal = 0>
+				<#assign imporLine = 0>
+				<#list transaction.item as item>
+				<#assign tipitem = '${item.itemtype}'>
+				<#if tipitem != "Discount">
+				<#assign coditem = "${item.taxcode}">
+				<#assign TaxCode = "${item.taxcode?keep_after(':')}">
+				<#assign TarifaCode = "${TaxCode?substring(0, 2)}">
+				<#assign TarifaBase = "${TaxCode?substring(3, 5)}">
+				<#assign FlagExone  = "${TaxCode?substring(7, 8)}">
+
+				<!-- TaxCode : ${TaxCode} | TarifaCode: ${TarifaCode} | TarifaBase: ${TarifaBase} | FlagExone : ${FlagExone} -->
+				<#assign imporsigv = item.amount - item.custcol_discount_linemx>
+				<#assign taxtotal = item.tax1amt - item.custcol_traslada_iva_mx>
+				<#assign TarifaItem = TarifaCode>
+				<#assign TasaIVA = TarifaBase>
+				<#assign imporLine = imporsigv + taxtotal>
+				<#if FlagExone = 'E'>
+					<#assign impoiv13 = ((imporsigv?eval) * (TarifaBase?eval / 100))>
+					<#assign imporExon = impoiv13 - taxtotal>
+					<#assign tarifcr = item.taxrate1?string.number?eval * 100>
+					<#assign porceexo= TarifaBase?eval - tarifcr?eval>
+					<!-- impoiv13 : ${impoiv13} | TAXRATE : ${tarifcr} | %EXONERACION : ${porceexo}-->
+				</#if>
+					<!-- imporsigv = ${imporsigv} | imporExon = ${imporExon} | taxtotal = ${taxtotal} | TasaIVA = ${TasaIVA} | imporLine = ${imporLine} -->
+				<LineaDetalle>
+					<NumeroLinea>${cont}</NumeroLinea>
+					<#assign cont = cont + 1>
+					<#if enforeing == 'Sí'><#if tipitem != "Service">
+					<PartidaArancelaria>${item.custcol_nch_partida_arancel}</PartidaArancelaria>
+					</#if>
+					</#if>
+					<Codigo>${item.custcol_nch_code_cabys}</Codigo>
+					<CodigoComercial>
+						<Tipo>04</Tipo>
+						<Codigo><#if transaction.custbody_ce_incoterm == ''><#if item.custcol_nch_display_name != ''><#if item.custcol_nch_display_name?length <= 4>${item.custcol_nch_display_name}<#else>${item.custcol_nch_display_name?substring(0,4)}</#if><#else>9999</#if><#else><#if item.custcol_nch_display_name != ''>${item.custcol_nch_display_name}<#else>9999</#if></#if></Codigo>
+					</CodigoComercial>
+					<Cantidad>${item.quantity?c?number?string["#.###"]}</Cantidad>
+					<UnidadMedida>${item.custcol_nch_unitmed_legal}</UnidadMedida>
+					<UnidadMedidaComercial><#if item.units == ''>${item.custcol_nch_unitmed_legal}</#if>${item.units}</UnidadMedidaComercial>
+					<Detalle>${item.description}</Detalle>
+					<PrecioUnitario>${item.rate?c?number?string["#.###"]}</PrecioUnitario>
+					<MontoTotal>${item.amount?c?number?string["#.##"]}</MontoTotal>
+					<#if item.custcol_discount_linemx \gt 0>
+					<Descuento>
+					<MontoDescuento>${item.custcol_discount_linemx?c?number?string["#.##"]}</MontoDescuento>
+					<NaturalezaDescuento>DESCUENTO COMERCIAL</NaturalezaDescuento>
+					</Descuento>
+					</#if>
+					<SubTotal>${imporsigv?c?number?string["#.##"]}</SubTotal>
+					<#if enforeing != 'Sí'>
+					<Impuesto>
+						<Codigo>01</Codigo>
+						<CodigoTarifa>${TarifaItem}</CodigoTarifa>
+						<Tarifa>${TasaIVA}</Tarifa>
+						<Monto><#if FlagExone = 'S'>${taxtotal?c?number?string["#.##"]}<#else>${impoiv13?c?number?string["#.##"]}</#if></Monto>
+						<#if enforeing == 'Sí'>
+						<MontoExportacion>${taxtotal?c?number?string["#.##"]}</MontoExportacion>
+						</#if>
+					<#if FlagExone = 'E'>
+					<Exoneracion>
+						<TipoDocumento>01</TipoDocumento>
+						<NumeroDocumento>${item.custcol_cr_numdoc_exoner}</NumeroDocumento>
+						<NombreInstitucion>${item.custcol_nch_instituto_exon}</NombreInstitucion>
+						<FechaEmision>${item.custcol_nch_date_emite?iso_local_nz}T10:24:00</FechaEmision>
+						<PorcentajeExoneracion>${porceexo}</PorcentajeExoneracion>
+						<MontoExoneracion>${imporExon?c?number?string["#.##"]}</MontoExoneracion>
+					</Exoneracion>
+					</#if>
+					</Impuesto>
+					</#if>
+					<#if enforeing == 'Sí'>
+					<ImpuestoNeto>${taxtotal?c?number?string["#.##"]}</ImpuestoNeto>
+					</#if>
+					<#if FlagExone = 'E'>
+					<ImpuestoNeto>${taxtotal?c?number?string["#.##"]}</ImpuestoNeto>
+					</#if>
+					<MontoTotalLinea>${imporLine?c?number?string["#.##"]}</MontoTotalLinea>
+				</LineaDetalle>
+				</#if>
+				</#list>
+				</DetalleServicio>
+				<ResumenFactura>
+					<CodigoTipoMoneda>
+						<CodigoMoneda>${currency}</CodigoMoneda>
+						<TipoCambio>${transaction.exchangerate?c?number?string["#.####"]}</TipoCambio>
+					</CodigoTipoMoneda>
+					<#assign arrayPDTE = 0>
+					<#assign arrayPDTE_ex = 0>
+					<#assign arrayPDTE_exo = 0>
+					<#assign arraySERV = 0>
+					<#assign arraySERV_ex = 0>
+					<#assign arraySERV_exo = 0>
+					<#list transaction.item as item>
+						<#assign tipitem 	= '${item.itemtype}'>
+						<#assign coditem 	= '${item.taxcode}'>
+						<#assign TaxCode 	= "${coditem?keep_after(':')}">
+						<#assign TarifaBase = "${TaxCode?substring(3, 5)}">
+						<#assign FlagExone  = "${TaxCode?substring(7, 8)}">
+
+						<#if tipitem != "Discount">
+
+						  <#if tipitem == "Service">
+							<#if FlagExone == "S">
+							<#if TarifaBase == '00'>
+							<#assign arraySERV_ex += item.amount>
+							<#else>
+							<#assign arraySERV += item.amount>
+							</#if>
+							<#else><#assign arraySERV_exo += item.amount></#if>
+						  </#if>
+
+						  <#if tipitem != "Service">
+							<#if FlagExone == "S">
+							<#if TarifaBase == '00'>
+							<#assign arrayPDTE_ex += item.amount>
+							<#else>
+							<#assign arrayPDTE += item.amount>
+							</#if>
+							<#else><#assign arrayPDTE_exo += item.amount></#if>
+						  </#if>
+
+						</#if>
+					</#list>
+					<!-- Gravado : ${arrayPDTE} | Exento : ${arrayPDTE_ex} | Exonerado : ${arrayPDTE_exo} -->
+					<!-- TarifaBase : ${TarifaBase} - Exonera : ${porceexo} -->
+					  <#assign TOTGrav = arraySERV + arrayPDTE>
+						<#assign TOTExce = arraySERV_ex + arrayPDTE_ex>
+						<#if exoneracion == 'Sí'>
+            <!-- exoneracion : ${exoneracion} | imporExon : ${imporExon} - impoiv13 : ${impoiv13} -->
+						<#assign arrayPT_exo 	= ((imporExon / impoiv13) *  (arrayPDTE_exo))>
+						<#assign arraySE_exo 	= ((imporExon / impoiv13) *  (arraySERV_exo))>
+						<#assign PT_exo_Resta 	= arrayPDTE_exo - arrayPT_exo>
+						<#assign SERV_exo_Re 	= arraySERV_exo - arraySE_exo>
+						<#assign TOTGrav_exo 	= PT_exo_Resta + SERV_exo_Re>
+						<#assign TOTExen_exo 	= 0>
+            <#assign TOTExon	 	= 0>
+						<#assign TOTExon	 	= arrayPT_exo + arraySE_exo>
+						<#assign TOTPTGrav = arrayPDTE + PT_exo_Resta>
+						<#assign TOTSEGrav = arraySERV + SERV_exo_Re>
+						<#assign TOTExce = arraySERV_ex + arrayPDTE_ex + TOTExen_exo>
+						<!-- TGRAVPT : ${TOTPTGrav} | TGRAVSE : ${TOTSEGrav} | TEXO : ${TOTExon}-->
+						<!-- arrayPT_exo : ${arrayPT_exo?c?number?string["0.000"]} | PT_exo_Resta : ${PT_exo_Resta?c?number?string["0.000"]} -->
+						<TotalServGravados>${TOTSEGrav?c?number?string["0.000"]}</TotalServGravados>
+						<TotalServExentos>${arraySERV_ex?c?number?string["#.###"]}</TotalServExentos>
+						<TotalServExonerado>${arraySE_exo?c?number?string["#.###"]}</TotalServExonerado>
+						<TotalMercanciasGravadas>${TOTPTGrav?c?number?string["#.###"]}</TotalMercanciasGravadas>
+						<TotalMercanciasExentas>${arrayPDTE_ex?c?number?string["#.###"]}</TotalMercanciasExentas>
+						<TotalMercExonerada>${arrayPT_exo?c?number?string["#.###"]}</TotalMercExonerada>
+						<TotalGravado>${(TOTPTGrav + TOTSEGrav)?c?number?string["#.###"]}</TotalGravado>
+						<TotalExento>${TOTExce?c?number?string["#.###"]}</TotalExento>
+						<TotalExonerado>${TOTExon?c?number?string["#.###"]}</TotalExonerado>
+						<TotalVenta>${transaction.custbody_nch_subtotal_neto?c?number?string["#.##"]}</TotalVenta>
+						<TotalDescuentos>${transaction.custbody_nch_descuento?c?number?string["#.##"]}</TotalDescuentos>
+						<TotalVentaNeta>${transaction.subtotal?c?number?string["#.##"]}</TotalVentaNeta>
+						<TotalImpuesto>${transaction.taxtotal?c?number?string["#.##"]}</TotalImpuesto>
+						<TotalComprobante>${transaction.total?c?number?string["#.##"]}</TotalComprobante>
+						<#else>
+						<TotalServGravados>${arraySERV?c?number?string["#.##"]}</TotalServGravados>
+						<TotalServExentos>${arraySERV_ex?c?number?string["#.##"]}</TotalServExentos>
+						<TotalMercanciasGravadas>${arrayPDTE?c?number?string["#.##"]}</TotalMercanciasGravadas>
+						<TotalMercanciasExentas>${arrayPDTE_ex?c?number?string["#.##"]}</TotalMercanciasExentas>
+						<TotalGravado>${TOTGrav?c?number?string["#.##"]}</TotalGravado>
+						<TotalExento>${TOTExce?c?number?string["#.##"]}</TotalExento>
+						<TotalVenta>${transaction.custbody_nch_subtotal_neto?c?number?string["#.##"]}</TotalVenta>
+						<TotalDescuentos>${transaction.custbody_nch_descuento?c?number?string["#.##"]}</TotalDescuentos>
+						<TotalVentaNeta>${transaction.subtotal?c?number?string["#.##"]}</TotalVentaNeta>
+						<TotalImpuesto>${transaction.taxtotal?c?number?string["#.##"]}</TotalImpuesto>
+						<TotalComprobante>${transaction.total?c?number?string["#.##"]}</TotalComprobante>
+						</#if>
+					</ResumenFactura>
+			<#if enforeing != 'Sí'>
+			</FacturaElectronica>
+			<#else>
+			</FacturaElectronicaExportacion>
+			</#if>
+			<TextosLibres>
+			<TextoLibre1>${transaction.custbody_nch_code_medipago}</TextoLibre1><!-- Medio de Pago -->
+			<TextoLibre2>${transaction.terms}</TextoLibre2><!-- Condicion Vta -->
+			<TextoLibre3>${transaction.partner.companyname}</TextoLibre3><!-- SalesRep -->
+			<TextoLibre4><#if transaction.createdfrom != "">${transaction.createdfrom.custbody_pedido_autorizado_por}</#if></TextoLibre4><!-- Attention -->
+			<TextoLibre5>${transaction.shipaddr1}</TextoLibre5><!-- ShipAddress To -->
+			<TextoLibre6>${customer.entityid}</TextoLibre6><!-- No. Customer -->
+			<TextoLibre7>${transaction.subsidiary.custrecord_oss_msje_default_fact_det}</TextoLibre7><!-- Leyenda Pie de Pagina -->
+			<#assign arrayPE = []>
+			<#list transaction.item as item>
+			<#assign tipitem = '${item.description}'>
+			<#if tipitem != "Descuento de Venta CORP">
+			<#assign arrayPE = arrayPE + ["${item.custcol_nch_presentacion_mx}"]>
+			</#if>
+			</#list>
+			<TextoLibre8><#list arrayPE as i>${i}<#if i_has_next>|</#if></#list></TextoLibre8><!-- PRESENTACION DE ITEM -->
+			<TextoLibre9>${transaction.memo}</TextoLibre9><!-- Nota -->
+			<TextoLibre10>${transaction.otherrefnum}</TextoLibre10><!-- Orden de Compra-->
+			<TextoLibre11>${transaction.duedate}</TextoLibre11><!-- Fecha Vencimiento -->
+			<TextoLibre12>${transaction.custbody_guia_vehiculo_despacho}</TextoLibre12><!-- Transporte -->
+			<TextoLibre13>${transaction.billaddr1}</TextoLibre13><!-- BillAddress ONE -->
+			<TextoLibre14>${transaction.billstate} ${transaction.billcity} ${transaction.billaddr3}</TextoLibre14><!-- BillAddress TWO -->
+			<TextoLibre15>${transaction.shipstate} ${transaction.shipcity} ${transaction.shipaddr3}</TextoLibre15><!-- ShipAddress TWO -->
+			</TextosLibres>
+		</informacionOrganismo>
+	<informacionComfiar>
+    <nit>${transaction.subsidiary.taxidnum}</nit>
+    <codDoc>${trantype}</codDoc>
+    <prefixPtoVenta>100001</prefixPtoVenta>
+    <nroCbte>-NUMERACION2-${transaction.tranid}-NUMERACION2-</nroCbte>
+    <#assign mailmas = transaction.custbody13>
+	<#assign mailPE = []>
+	<#list mailmas?split(",") as x>
+	<#assign mailPE = mailPE + ["${x}"]>
+	</#list>
+	<Receptores>
+		<#list mailPE as mailperu>
+		<Receptor>
+		<Login>${mailperu}</Login>
+		<TipoUsuario>0</TipoUsuario>
+		<Nombre>${customer.companyname}</Nombre>
+		<Mail>${mailperu}</Mail>
+		<Contacto></Contacto>
+		<Adjunto>ADJUNTO</Adjunto>
+		<Idioma>7</Idioma>
+		</Receptor>
+	</#list>
+	<#if transaction.partner.email!= "">
+	<Receptor>
+		<Login>${transaction.partner.email}</Login>
+		<TipoUsuario>2</TipoUsuario>
+		<Nombre>${customer.companyname}</Nombre>
+		<Mail>${transaction.partner.email}</Mail>
+		<Contacto></Contacto>
+		<Adjunto>ADJUNTO</Adjunto>
+		<Idioma>7</Idioma>
+	</Receptor>
+	</#if>
+    </Receptores>
+   </informacionComfiar>
+	</Comprobante>
+</Comprobantes>
